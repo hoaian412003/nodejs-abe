@@ -1,0 +1,1 @@
+cmd_Release/abe.node := c++ -bundle -undefined dynamic_lookup -Wl,-search_paths_first -mmacosx-version-min=10.15 -arch arm64 -L./Release -stdlib=libc++  -o Release/abe.node Release/obj.target/abe/binding.o Release/obj.target/abe/abe.o Release/nothing.a 
