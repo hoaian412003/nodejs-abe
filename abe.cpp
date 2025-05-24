@@ -1,43 +1,62 @@
-#include "abe.h"
-#include <unordered_set>
-#include <sstream>
-#include <openabe/openabe.h>
+#include <iostream>
+#include <pbc/pbc.h>
+#include <string>
 
-using namespace oabe;
+using namespace std;
 
-namespace abe {
-  OpenABECtx* ctx;
+class ABEContext {
+public:
+    pairing_t pairing;
+    element_t g, master_secret;
 
-  void setup() {
-      // In a real implementation, generate master keys
-      ctx = OpenABECtx::Init();
-      return ctx;
-  }
+    ABEContext() {
+        // Type A pairing parameters (symmetric curve, good for basic tests)
+        char param[1024];
+        FILE* fp = fopen("a.param", "r");
+        size_t count = fread(param, 1, 1024, fp);
+        fclose(fp);
 
-  std::string encrypt(const std::string& policy, const std::string& plaintext) {
-      // Just concatenate for illustration: [policy]::[plaintext]
-      return policy + "::" + plaintext;
-  }
+        if (pairing_init_set_buf(pairing, param, count)) {
+            throw runtime_error("Pairing init failed.");
+        }
 
-  std::string decrypt(const std::string& attributes, const std::string& ciphertext) {
-      auto sep = ciphertext.find("::");
-      if (sep == std::string::npos) return "";
+        element_init_G1(g, pairing);
+        element_init_Zr(master_secret, pairing);
 
-      std::string policy = ciphertext.substr(0, sep);
-      std::string plaintext = ciphertext.substr(sep + 2);
+        element_random(g);
+        element_random(master_secret);
+    }
 
-      // Split attributes and policy to compare
-      std::istringstream attrStream(attributes), policyStream(policy);
-      std::unordered_set<std::string> attrSet;
-      std::string token;
+    void keygen(const string& attr, element_t& pubKey, element_t& privKey) {
+        element_init_G1(pubKey, pairing);
+        element_init_G1(privKey, pairing);
+        element_pow_zn(pubKey, g, master_secret);
+        element_pow_zn(privKey, g, master_secret);  // Normally hashed with attr
+    }
 
-      while (std::getline(attrStream, token, ',')) attrSet.insert(token);
+    void encrypt(const string& policy, const string& message, element_t& c1, element_t& c2) {
+        element_t r;
+        element_init_Zr(r, pairing);
+        element_random(r);
 
-      while (std::getline(policyStream, token, ',')) {
-          if (attrSet.find(token) == attrSet.end()) return "";
-      }
+        element_init_G1(c1, pairing);
+        element_init_GT(c2, pairing);
 
-      return plaintext;
-  }
-}
+        element_pow_zn(c1, g, r);
+        element_t temp;
+        element_init_GT(temp, pairing);
+        pairing_apply(temp, g, g, pairing);
+        element_pow_zn(c2, temp, r);
+        // For full CP-ABE: embed the message using c2 * M
+    }
 
+    void decrypt(const element_t& c1, const element_t& c2, const element_t& privKey, string& out) {
+        element_t result;
+        element_init_GT(result, pairing);
+        pairing_apply(result, c1, privKey, pairing);
+        // Normally compare result to c2 or use to recover message
+        cout << "[Mock Decryption] Pairing result: ";
+        element_printf("%B\n", result);
+        out = "[Decrypted] (mock)";
+    }
+};
